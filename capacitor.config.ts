@@ -5,8 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Remindo',
   webDir: 'out',
   server: {
-    // For local dev on Android device/emulator:
-    // url: 'http://10.0.2.2:3000',
+    url: 'https://remindo-alpha.vercel.app',
     cleartext: true,
     androidScheme: 'https'
   },
