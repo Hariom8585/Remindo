@@ -3,8 +3,11 @@ import path from 'path';
 import { prisma } from './prisma';
 
 // Fallback JSON-persisted storage file (used seamlessly if MySQL credentials are not yet configured)
-const DATA_DIR = path.join(process.cwd(), '.data');
+const DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', '.remindo_data')
+  : path.join(process.cwd(), '.data');
 const STORE_FILE = path.join(DATA_DIR, 'remindo_store.json');
+
 
 interface FallbackStore {
   users: Array<{
@@ -866,9 +869,24 @@ export async function updateUserPreferences(
 }
 
 export function getDatabaseStatus() {
+  const isVercel = !!process.env.VERCEL;
+  const isLocalhostDb =
+    process.env.DATABASE_URL?.includes('localhost') ||
+    process.env.DATABASE_URL?.includes('127.0.0.1');
+  const isDemo = isUsingFallback || (isVercel && isLocalhostDb);
+
   return {
-    isUsingFallback,
+    isUsingFallback: isDemo,
+    isDemoMode: isDemo,
+    modeLabel: isDemo
+      ? 'Demo Mode (Temporary Serverless Storage)'
+      : 'Production Mode (Persistent Hosted MySQL)',
     targetProvider: 'mysql',
-    databaseUrl: process.env.DATABASE_URL ? 'Configured' : 'Missing',
+    databaseUrl: process.env.DATABASE_URL
+      ? isLocalhostDb
+        ? 'Localhost (Demo on Cloud)'
+        : 'Cloud Configured'
+      : 'Missing',
   };
 }
+

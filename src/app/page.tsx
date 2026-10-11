@@ -50,6 +50,7 @@ export default function RemindoApp() {
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [parsedDataForConfirm, setParsedDataForConfirm] = useState<any>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [databaseStatus, setDatabaseStatus] = useState<any>(null);
 
   // Check current session
   const checkSession = useCallback(async () => {
@@ -58,11 +59,15 @@ export default function RemindoApp() {
       if (res.ok) {
         const data = await res.json();
         setCurrentUser({ ...data.user, preferences: data.preferences });
+        if (data.databaseStatus) {
+          setDatabaseStatus(data.databaseStatus);
+        }
       } else {
         setCurrentUser(null);
       }
     } catch (err) {
       setCurrentUser(null);
+
     } finally {
       setIsAuthChecking(false);
     }
@@ -357,7 +362,44 @@ export default function RemindoApp() {
         </div>
       </header>
 
+      {/* Demo Mode Notice Banner if using serverless fallback */}
+      {databaseStatus?.isDemoMode && (
+        <div
+          style={{
+            background: 'linear-gradient(90deg, #eff6ff 0%, #f0fdf4 100%)',
+            borderBottom: '1px solid #bfdbfe',
+            color: '#1e40af',
+            fontSize: '0.78rem',
+            padding: '7px 16px',
+            textAlign: 'center',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+          }}
+        >
+          <span
+            style={{
+              background: '#3b82f6',
+              color: '#ffffff',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontWeight: 700,
+              fontSize: '0.68rem',
+              letterSpacing: '0.5px',
+            }}
+          >
+            DEMO MODE
+          </span>
+          <span>
+            Active on temporary serverless storage. Alarms, Voice capture & AI are fully interactive. Connect TiDB Cloud MySQL for permanent multi-device sync.
+          </span>
+        </div>
+      )}
+
       {/* Main Content Area */}
+
       <main style={{ maxWidth: '1080px', margin: '0 auto', padding: '24px 20px', width: '100%', flex: 1 }}>
         {!currentUser && !isAuthChecking ? (
           <div
