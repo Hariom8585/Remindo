@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { getTaskById, updateTask, deleteTask } from '@/lib/db-repository';
+import { parseDateTimeInTimezone } from '@/lib/timezone';
+import { sanitizeErrorMessage } from '@/lib/rate-limiter';
 
 export async function GET(
   request: NextRequest,
@@ -32,13 +34,10 @@ export async function PUT(
     const body = await request.json();
     const { title, description, category, priority, dueDate, dueTime, alertMode, reminders } = body;
 
+    const userTimezone = session.timezone || 'Asia/Kolkata';
     let parsedDueDate: Date | null = null;
     if (dueDate) {
-      if (dueTime) {
-        parsedDueDate = new Date(`${dueDate}T${dueTime}:00`);
-      } else {
-        parsedDueDate = new Date(`${dueDate}T09:00:00`);
-      }
+      parsedDueDate = parseDateTimeInTimezone(dueDate, dueTime, userTimezone);
     }
 
     let reminderItems: Array<{ remindAt: Date; advanceMinutes?: number; channel?: string; alertMode?: string }> | undefined;
@@ -71,8 +70,8 @@ export async function PUT(
 
     return NextResponse.json({ task: updated });
   } catch (err: any) {
-    console.error('[Update Task Error]', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    console.error('[Update Task Error]', sanitizeErrorMessage(err));
+    return NextResponse.json({ error: sanitizeErrorMessage(err) || 'Internal server error' }, { status: 500 });
   }
 }
 

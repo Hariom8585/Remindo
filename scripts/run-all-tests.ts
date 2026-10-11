@@ -183,6 +183,39 @@ async function runTests() {
     assert.strictEqual(hasUser1Task, false);
   });
 
+  await test('User 2 cannot update User 1 task (strict isolation)', async () => {
+    let failed = false;
+    try {
+      await updateTask(user1TaskId, testUser2Id, { title: 'Hacked by User 2' });
+    } catch (e: any) {
+      failed = true;
+      assert.ok(e.message.includes('not found') || e.message.includes('unauthorized'));
+    }
+    assert.strictEqual(failed, true, 'User 2 updating User 1 task must be blocked');
+  });
+
+  await test('User 2 cannot complete User 1 task (strict isolation)', async () => {
+    let failed = false;
+    try {
+      await toggleTaskComplete(user1TaskId, testUser2Id, true);
+    } catch (e: any) {
+      failed = true;
+      assert.ok(e.message.includes('not found') || e.message.includes('unauthorized'));
+    }
+    assert.strictEqual(failed, true, 'User 2 completing User 1 task must be blocked');
+  });
+
+  await test('User 2 cannot delete User 1 task (strict isolation)', async () => {
+    let failed = false;
+    try {
+      await deleteTask(user1TaskId, testUser2Id);
+    } catch (e: any) {
+      failed = true;
+      assert.ok(e.message.includes('not found') || e.message.includes('unauthorized'));
+    }
+    assert.strictEqual(failed, true, 'User 2 deleting User 1 task must be blocked');
+  });
+
   // -----------------------------------------------------------------
   // 4. Task CRUD & Completion Management
   // -----------------------------------------------------------------
@@ -260,6 +293,70 @@ async function runTests() {
     assert.strictEqual(res.success, true);
     const remaining = await getUserTasks(testUser1Id);
     assert.strictEqual(remaining.some((t: any) => t.id === user1TaskId), false);
+  });
+
+  // -----------------------------------------------------------------
+  // 6. Multi-Task Natural Language Extraction Tests
+  // -----------------------------------------------------------------
+  console.log('\n--- 6. Multi-Task Voice & NLP Extraction ---');
+  const { parseMultipleTasksDeterministic } = await import('../src/lib/nlp/parseTaskDeterministic');
+
+  await test('Split multi-task sentence joined by "and" with action verbs', () => {
+    const multi = parseMultipleTasksDeterministic('Buy milk today at 5 PM and call Dad tomorrow at 6 PM', baseDate);
+    assert.strictEqual(multi.length, 2);
+    assert.ok(multi[0].title.toLowerCase().includes('buy milk'));
+    assert.strictEqual(multi[0].dueTime, '17:00');
+    assert.ok(multi[1].title.toLowerCase().includes('call dad'));
+    assert.strictEqual(multi[1].dueTime, '18:00');
+    assert.strictEqual(multi[1].dueDate, '2026-10-12');
+  });
+
+  await test('Split multi-line tasks', () => {
+    const input = 'Submit assignment on 23 October\nPay electricity bill tomorrow at 10 AM\nBuy charger this evening';
+    const multi = parseMultipleTasksDeterministic(input, baseDate);
+    assert.strictEqual(multi.length, 3);
+    assert.strictEqual(multi[0].dueDate, '2026-10-23');
+    assert.strictEqual(multi[1].dueDate, '2026-10-12');
+    assert.strictEqual(multi[1].dueTime, '10:00');
+    assert.strictEqual(multi[2].dueTime, '18:00');
+  });
+
+  await test('Do NOT split single task with compound object ("Buy milk and bread")', () => {
+    const multi = parseMultipleTasksDeterministic('Buy milk and bread tomorrow at 8 AM', baseDate);
+    assert.strictEqual(multi.length, 1);
+    assert.ok(multi[0].title.toLowerCase().includes('milk and bread'));
+  });
+
+  // -----------------------------------------------------------------
+  // 7. Security, Rate Limiter & Secret Sanitization Tests
+  // -----------------------------------------------------------------
+  console.log('\n--- 7. Rate Limiter & Secret Sanitization ---');
+  const { checkRateLimit, sanitizeErrorMessage } = await import('../src/lib/rate-limiter');
+
+  await test('Rate limiter allows requests under threshold and blocks excess', () => {
+    const testKey = `test_ip_${Date.now()}`;
+    // Limit to 3 requests
+    const r1 = checkRateLimit(testKey, 3, 10000);
+    const r2 = checkRateLimit(testKey, 3, 10000);
+    const r3 = checkRateLimit(testKey, 3, 10000);
+    const r4 = checkRateLimit(testKey, 3, 10000);
+    assert.strictEqual(r1.allowed, true);
+    assert.strictEqual(r2.allowed, true);
+    assert.strictEqual(r3.allowed, true);
+    assert.strictEqual(r4.allowed, false);
+    assert.strictEqual(r4.remaining, 0);
+  });
+
+  await test('Secret sanitizer redacts database credentials and tokens', () => {
+    const leakedDb = 'Failed connecting to mysql://root:super_secret_pw123@gateway.tidbcloud.com:4000/remindo';
+    const sanitizedDb = sanitizeErrorMessage(leakedDb);
+    assert.strictEqual(sanitizedDb.includes('super_secret_pw123'), false);
+    assert.ok(sanitizedDb.includes('mysql://***:***@'));
+
+    const leakedToken = 'Authorization error for token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjMifQ.abc123xyz456def';
+    const sanitizedToken = sanitizeErrorMessage(leakedToken);
+    assert.strictEqual(sanitizedToken.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'), false);
+    assert.ok(sanitizedToken.includes('[REDACTED_JWT_TOKEN]'));
   });
 
   console.log('\n====================================================');

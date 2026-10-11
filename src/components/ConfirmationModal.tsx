@@ -31,6 +31,15 @@ interface ConfirmationModalProps {
     clarificationPrompt?: string;
     suggestions?: Array<{ label: string; date: string; time: string }>;
     reminders?: Array<{ advanceMinutes: number; label: string }>;
+    tasks?: Array<{
+      title: string;
+      dueDate: string | null;
+      dueTime: string | null;
+      category: string;
+      priority: 'HIGH' | 'MEDIUM' | 'LOW';
+      alertMode?: 'ALARM' | 'NOTIFICATION';
+    }>;
+    isMultiTask?: boolean;
   } | null;
   onConfirm: (finalTask: {
     title: string;
@@ -76,15 +85,40 @@ export default function ConfirmationModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [multiTasksList, setMultiTasksList] = useState<Array<{
+    title: string;
+    category: string;
+    priority: string;
+    dueDate: string | null;
+    dueTime: string | null;
+    alertMode: 'ALARM' | 'NOTIFICATION';
+    selected: boolean;
+  }>>([]);
+
   useEffect(() => {
     if (parsedData) {
-      setTitle(parsedData.title || '');
-      setCategory(parsedData.category || 'Other');
-      setPriority(parsedData.priority || 'MEDIUM');
-      setDueDate(parsedData.dueDate || '');
-      setDueTime(parsedData.dueTime || '');
-      setAlertMode(parsedData.alertMode || 'ALARM');
-      setSelectedReminders([0, 15]);
+      if (parsedData.tasks && parsedData.tasks.length > 1) {
+        setMultiTasksList(
+          parsedData.tasks.map((t) => ({
+            title: t.title || '',
+            category: t.category || 'Other',
+            priority: t.priority || 'MEDIUM',
+            dueDate: t.dueDate || null,
+            dueTime: t.dueTime || null,
+            alertMode: (t.alertMode as any) || 'ALARM',
+            selected: true,
+          }))
+        );
+      } else {
+        setMultiTasksList([]);
+        setTitle(parsedData.title || '');
+        setCategory(parsedData.category || 'Other');
+        setPriority(parsedData.priority || 'MEDIUM');
+        setDueDate(parsedData.dueDate || '');
+        setDueTime(parsedData.dueTime || '');
+        setAlertMode(parsedData.alertMode || 'ALARM');
+        setSelectedReminders([0, 15]);
+      }
       setError(null);
     }
   }, [parsedData]);
@@ -102,6 +136,34 @@ export default function ConfirmationModal({
   const handleApplySuggestion = (suggestion: { date: string; time: string }) => {
     setDueDate(suggestion.date);
     setDueTime(suggestion.time);
+  };
+
+  const handleSaveAllMulti = async () => {
+    const selected = multiTasksList.filter((t) => t.selected && t.title.trim().length > 0);
+    if (selected.length === 0) {
+      setError('Please select at least one task to save');
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      for (const t of selected) {
+        await onConfirm({
+          title: t.title.trim(),
+          category: t.category,
+          priority: t.priority,
+          dueDate: t.dueDate,
+          dueTime: t.dueTime,
+          alertMode: t.alertMode,
+          reminders: [{ advanceMinutes: 0 }, { advanceMinutes: 15 }],
+        });
+      }
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save tasks');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -136,19 +198,180 @@ export default function ConfirmationModal({
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal-content"
-        style={{ padding: '24px', maxWidth: '540px' }}
+        style={{ padding: '24px', maxWidth: multiTasksList.length > 1 ? '620px' : '540px' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle size={22} color="var(--primary)" />
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>Confirm Reminder Details</h2>
+        {multiTasksList.length > 1 ? (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle size={22} color="var(--primary)" />
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>
+                  Confirm {multiTasksList.length} Extracted Tasks
+                </h2>
+              </div>
+              <button onClick={onClose} style={{ padding: '4px', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              Remindo extracted {multiTasksList.length} individual tasks from your input. Review or adjust dates, times, and alert modes before saving:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
+              {multiTasksList.map((taskItem, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: taskItem.selected ? '1.5px solid var(--primary)' : '1px solid var(--border-subtle)',
+                    background: taskItem.selected ? 'rgba(99, 102, 241, 0.04)' : '#f8fafc',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={taskItem.selected}
+                      onChange={(e) => {
+                        const updated = [...multiTasksList];
+                        updated[idx].selected = e.target.checked;
+                        setMultiTasksList(updated);
+                      }}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                    />
+                    <input
+                      type="text"
+                      value={taskItem.title}
+                      onChange={(e) => {
+                        const updated = [...multiTasksList];
+                        updated[idx].title = e.target.value;
+                        setMultiTasksList(updated);
+                      }}
+                      placeholder="Task Title"
+                      style={{
+                        flex: 1,
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-subtle)',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        background: 'white',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', paddingLeft: '28px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      <Calendar size={13} />
+                      <input
+                        type="date"
+                        value={taskItem.dueDate || ''}
+                        onChange={(e) => {
+                          const updated = [...multiTasksList];
+                          updated[idx].dueDate = e.target.value || null;
+                          setMultiTasksList(updated);
+                        }}
+                        style={{ padding: '3px 6px', borderRadius: '6px', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', background: 'white' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      <Clock size={13} />
+                      <input
+                        type="time"
+                        value={taskItem.dueTime || ''}
+                        onChange={(e) => {
+                          const updated = [...multiTasksList];
+                          updated[idx].dueTime = e.target.value || null;
+                          setMultiTasksList(updated);
+                        }}
+                        style={{ padding: '3px 6px', borderRadius: '6px', border: '1px solid var(--border-subtle)', fontSize: '0.75rem', background: 'white' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...multiTasksList];
+                          updated[idx].alertMode = 'ALARM';
+                          setMultiTasksList(updated);
+                        }}
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          border: taskItem.alertMode === 'ALARM' ? '1px solid var(--primary)' : '1px solid var(--border-subtle)',
+                          background: taskItem.alertMode === 'ALARM' ? 'var(--primary)' : 'white',
+                          color: taskItem.alertMode === 'ALARM' ? 'white' : 'var(--text-secondary)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🔊 Alarm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...multiTasksList];
+                          updated[idx].alertMode = 'NOTIFICATION';
+                          setMultiTasksList(updated);
+                        }}
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          border: taskItem.alertMode === 'NOTIFICATION' ? '1px solid var(--primary)' : '1px solid var(--border-subtle)',
+                          background: taskItem.alertMode === 'NOTIFICATION' ? 'var(--primary)' : 'white',
+                          color: taskItem.alertMode === 'NOTIFICATION' ? 'white' : 'var(--text-secondary)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🔔 Notice
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#fee2e2', color: '#dc2626', fontSize: '0.8rem', marginBottom: '12px' }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+              <button type="button" onClick={onClose} className="btn-secondary" disabled={isSubmitting}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAllMulti}
+                className="btn-primary"
+                disabled={isSubmitting || multiTasksList.filter((t) => t.selected).length === 0}
+              >
+                {isSubmitting ? 'Saving Tasks...' : `Confirm & Save ${multiTasksList.filter((t) => t.selected).length} Tasks`}
+              </button>
+            </div>
           </div>
-          <button onClick={onClose} style={{ padding: '4px', color: 'var(--text-muted)' }}>
-            <X size={20} />
-          </button>
-        </div>
+        ) : (
+          <div>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle size={22} color="var(--primary)" />
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>Confirm Reminder Details</h2>
+              </div>
+              <button onClick={onClose} style={{ padding: '4px', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
 
         {/* Clarification Alert if deadline was missing in input */}
         {parsedData.needsClarification && !dueDate && (
@@ -428,9 +651,11 @@ export default function ConfirmationModal({
             >
               {isSubmitting ? 'Saving...' : 'Confirm & Save Reminder'}
             </button>
-          </div>
-        </form>
-      </div>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
-  );
+  </div>
+);
 }

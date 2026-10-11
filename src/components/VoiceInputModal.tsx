@@ -145,7 +145,11 @@ export default function VoiceInputModal({
 
       const data = await res.json();
       if (res.ok && data.result) {
-        onParsedResult(data.result);
+        onParsedResult({
+          ...data.result,
+          tasks: data.tasks || [data.result],
+          isMultiTask: Boolean(data.isMultiTask),
+        });
         onClose();
       } else {
         setErrorMessage(data.error || 'Failed to interpret voice input');

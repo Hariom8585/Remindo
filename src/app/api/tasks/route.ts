@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { getUserTasks, createTask, TaskFilterOptions } from '@/lib/db-repository';
+import { parseDateTimeInTimezone } from '@/lib/timezone';
+import { checkRateLimit, getClientIp, sanitizeErrorMessage } from '@/lib/rate-limiter';
 
 export async function GET(request: NextRequest) {
   const session = getSessionUser(request);
@@ -30,6 +32,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimit(`task_create_${session.userId || ip}`, 60, 60 * 1000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please slow down and try again shortly.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { title, description, category, priority, dueDate, dueTime, alertMode, reminders } = body;
@@ -39,14 +50,11 @@ export async function POST(request: NextRequest) {
     }
 
     const taskAlertMode = alertMode === 'NOTIFICATION' ? 'NOTIFICATION' : 'ALARM';
+    const userTimezone = session.timezone || 'Asia/Kolkata';
 
     let parsedDueDate: Date | null = null;
     if (dueDate) {
-      if (dueTime) {
-        parsedDueDate = new Date(`${dueDate}T${dueTime}:00`);
-      } else {
-        parsedDueDate = new Date(`${dueDate}T09:00:00`);
-      }
+      parsedDueDate = parseDateTimeInTimezone(dueDate, dueTime, userTimezone);
     }
 
     // Build scheduled reminders
@@ -89,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ task: newTask }, { status: 201 });
   } catch (err: any) {
-    console.error('[Create Task Error]', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    console.error('[Create Task Error]', sanitizeErrorMessage(err));
+    return NextResponse.json({ error: sanitizeErrorMessage(err) || 'Internal server error' }, { status: 500 });
   }
 }

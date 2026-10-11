@@ -78,6 +78,16 @@ export default function QuickAddTaskModal({
     suggestions?: Array<{ label: string; date: string; time: string }>;
   } | null>(null);
 
+  const [multiTasks, setMultiTasks] = useState<Array<{
+    title: string;
+    category: string;
+    priority: string;
+    dueDate: string | null;
+    dueTime: string | null;
+    alertMode: 'ALARM' | 'NOTIFICATION';
+    selected: boolean;
+  }> | null>(null);
+
   if (!isOpen) return null;
 
   const handleInterpret = async (textToParse?: string) => {
@@ -95,31 +105,82 @@ export default function QuickAddTaskModal({
 
       const data = await res.json();
       if (res.ok && data.result) {
-        const r = data.result;
-        setTitle(r.title || query.trim());
-        setCategory(r.category || 'Other');
-        setPriority(r.priority || 'MEDIUM');
-        setDueDate(r.dueDate || '');
-        setDueTime(r.dueTime || '');
-        setHasInterpreted(true);
-
-        if (r.needsClarification && !r.dueDate) {
-          setClarificationInfo({
-            prompt: r.clarificationPrompt,
-            suggestions: r.suggestions,
-          });
+        if (data.isMultiTask && Array.isArray(data.tasks) && data.tasks.length > 1) {
+          setMultiTasks(
+            data.tasks.map((t: any) => ({
+              title: t.title || '',
+              category: t.category || 'Other',
+              priority: t.priority || 'MEDIUM',
+              dueDate: t.dueDate || null,
+              dueTime: t.dueTime || null,
+              alertMode: defaultAlertMode,
+              selected: true,
+            }))
+          );
+          setHasInterpreted(true);
         } else {
-          setClarificationInfo(null);
+          setMultiTasks(null);
+          const r = data.result;
+          setTitle(r.title || query.trim());
+          setCategory(r.category || 'Other');
+          setPriority(r.priority || 'MEDIUM');
+          setDueDate(r.dueDate || '');
+          setDueTime(r.dueTime || '');
+          setHasInterpreted(true);
+
+          if (r.needsClarification && !r.dueDate) {
+            setClarificationInfo({
+              prompt: r.clarificationPrompt,
+              suggestions: r.suggestions,
+            });
+          } else {
+            setClarificationInfo(null);
+          }
         }
       } else {
+        setMultiTasks(null);
         setTitle(query.trim());
         setHasInterpreted(true);
       }
     } catch (err: any) {
+      setMultiTasks(null);
       setTitle(query.trim());
       setHasInterpreted(true);
     } finally {
       setIsInterpreting(false);
+    }
+  };
+
+  const handleSaveAllMulti = async () => {
+    if (!multiTasks) return;
+    const selected = multiTasks.filter((t) => t.selected && t.title.trim().length > 0);
+    if (selected.length === 0) {
+      setError('Please select at least one task to save');
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      for (const t of selected) {
+        await onSaveTask({
+          title: t.title.trim(),
+          category: t.category,
+          priority: t.priority,
+          dueDate: t.dueDate,
+          dueTime: t.dueTime,
+          alertMode: t.alertMode,
+          reminders: [{ advanceMinutes: 0 }, { advanceMinutes: 15 }],
+        });
+      }
+      setMultiTasks(null);
+      setNaturalInput('');
+      setTitle('');
+      setHasInterpreted(false);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save tasks');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -361,8 +422,143 @@ export default function QuickAddTaskModal({
           </div>
         )}
 
-        {/* Structured Form */}
-        <form onSubmit={handleSubmit}>
+        {multiTasks && multiTasks.length > 1 ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={18} color="var(--primary)" />
+                <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Confirm {multiTasks.length} Extracted Tasks
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMultiTasks(null)}
+                style={{ fontSize: '0.74rem', color: 'var(--primary)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                Switch to Single Task
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto', marginBottom: '16px' }}>
+              {multiTasks.map((t, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: t.selected ? '1.5px solid var(--primary)' : '1px solid var(--border-subtle)',
+                    background: t.selected ? 'rgba(99, 102, 241, 0.04)' : '#f8fafc',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={t.selected}
+                      onChange={(e) => {
+                        const updated = [...multiTasks];
+                        updated[idx].selected = e.target.checked;
+                        setMultiTasks(updated);
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                    />
+                    <input
+                      type="text"
+                      value={t.title}
+                      onChange={(e) => {
+                        const updated = [...multiTasks];
+                        updated[idx].title = e.target.value;
+                        setMultiTasks(updated);
+                      }}
+                      style={{ flex: 1, padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-subtle)', fontSize: '0.85rem', fontWeight: 600 }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingLeft: '24px', alignItems: 'center' }}>
+                    <input
+                      type="date"
+                      value={t.dueDate || ''}
+                      onChange={(e) => {
+                        const updated = [...multiTasks];
+                        updated[idx].dueDate = e.target.value || null;
+                        setMultiTasks(updated);
+                      }}
+                      style={{ padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}
+                    />
+                    <input
+                      type="time"
+                      value={t.dueTime || ''}
+                      onChange={(e) => {
+                        const updated = [...multiTasks];
+                        updated[idx].dueTime = e.target.value || null;
+                        setMultiTasks(updated);
+                      }}
+                      style={{ padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-subtle)', fontSize: '0.75rem' }}
+                    />
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...multiTasks];
+                          updated[idx].alertMode = 'ALARM';
+                          setMultiTasks(updated);
+                        }}
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          background: t.alertMode === 'ALARM' ? 'var(--primary)' : 'white',
+                          color: t.alertMode === 'ALARM' ? 'white' : 'var(--text-secondary)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        🔊 Alarm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...multiTasks];
+                          updated[idx].alertMode = 'NOTIFICATION';
+                          setMultiTasks(updated);
+                        }}
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          background: t.alertMode === 'NOTIFICATION' ? 'var(--primary)' : 'white',
+                          color: t.alertMode === 'NOTIFICATION' ? 'white' : 'var(--text-secondary)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        🔔 Notice
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)' }}>
+              <button type="button" onClick={onClose} className="btn-secondary" disabled={isSubmitting}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAllMulti}
+                className="btn-primary"
+                disabled={isSubmitting || multiTasks.filter((t) => t.selected).length === 0}
+              >
+                {isSubmitting ? 'Saving Tasks...' : `Confirm & Save ${multiTasks.filter((t) => t.selected).length} Tasks`}
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Structured Form */
+          <form onSubmit={handleSubmit}>
           {hasInterpreted && (
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '5px' }}>
@@ -601,7 +797,8 @@ export default function QuickAddTaskModal({
             </button>
           </div>
         </form>
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 }

@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { comparePassword, signToken, COOKIE_NAME } from '@/lib/auth';
 import { findUserByEmail } from '@/lib/db-repository';
+import { checkRateLimit, getClientIp, sanitizeErrorMessage } from '@/lib/rate-limiter';
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimit(`login_${ip}`, 15, 60 * 1000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please wait a moment and try again.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { email, password } = body;
@@ -51,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (err: any) {
-    console.error('[Login API Error]', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    console.error('[Login API Error]', sanitizeErrorMessage(err));
+    return NextResponse.json({ error: sanitizeErrorMessage(err) || 'Internal server error' }, { status: 500 });
   }
 }

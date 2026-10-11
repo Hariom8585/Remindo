@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hashPassword, signToken, COOKIE_NAME } from '@/lib/auth';
 import { findUserByEmail, createUser } from '@/lib/db-repository';
+import { checkRateLimit, getClientIp, sanitizeErrorMessage } from '@/lib/rate-limiter';
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimit(`register_${ip}`, 10, 60 * 1000);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many account creation attempts. Please wait a moment and try again.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { name, email, password, timezone } = body;
@@ -62,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (err: any) {
-    console.error('[Register API Error]', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    console.error('[Register API Error]', sanitizeErrorMessage(err));
+    return NextResponse.json({ error: sanitizeErrorMessage(err) || 'Internal server error' }, { status: 500 });
   }
 }

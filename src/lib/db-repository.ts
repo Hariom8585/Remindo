@@ -465,6 +465,12 @@ export async function updateTask(
 ) {
   return executeWithFallback(
     async () => {
+      // Verify task ownership strictly
+      const existing = await prisma.task.findFirst({
+        where: { id: taskId, userId },
+      });
+      if (!existing) throw new Error('Task not found');
+
       // If reminders provided, delete existing and re-create
       if (data.reminders) {
         await prisma.reminder.deleteMany({
@@ -568,6 +574,12 @@ export async function toggleTaskComplete(taskId: string, userId: string, isCompl
 
   return executeWithFallback(
     async () => {
+      // Verify task ownership strictly
+      const existing = await prisma.task.findFirst({
+        where: { id: taskId, userId },
+      });
+      if (!existing) throw new Error('Task not found');
+
       // When completed, dismiss pending reminders so stale alerts are cancelled
       if (isCompleted) {
         await prisma.reminder.updateMany({
@@ -616,8 +628,18 @@ export async function toggleTaskComplete(taskId: string, userId: string, isCompl
 export async function deleteTask(taskId: string, userId: string) {
   return executeWithFallback(
     async () => {
-      await prisma.task.delete({
+      // Verify task ownership strictly
+      const existing = await prisma.task.findFirst({
         where: { id: taskId, userId },
+      });
+      if (!existing) throw new Error('Task not found');
+
+      await prisma.reminder.deleteMany({
+        where: { taskId, userId },
+      });
+
+      await prisma.task.delete({
+        where: { id: taskId },
       });
       return { success: true };
     },
@@ -642,8 +664,14 @@ export async function snoozeReminder(
 
   return executeWithFallback(
     async () => {
-      return prisma.reminder.update({
+      // Verify reminder ownership strictly
+      const existing = await prisma.reminder.findFirst({
         where: { id: reminderId, userId },
+      });
+      if (!existing) throw new Error('Reminder not found');
+
+      return prisma.reminder.update({
+        where: { id: reminderId },
         data: {
           remindAt: newRemindAt,
           status: 'PENDING',
@@ -666,8 +694,14 @@ export async function snoozeReminder(
 export async function dismissReminder(reminderId: string, userId: string) {
   return executeWithFallback(
     async () => {
-      return prisma.reminder.update({
+      // Verify reminder ownership strictly
+      const existing = await prisma.reminder.findFirst({
         where: { id: reminderId, userId },
+      });
+      if (!existing) throw new Error('Reminder not found');
+
+      return prisma.reminder.update({
+        where: { id: reminderId },
         data: {
           status: 'DISMISSED',
         },

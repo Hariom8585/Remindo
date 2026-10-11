@@ -326,3 +326,77 @@ export function parseTaskDeterministic(
     },
   };
 }
+
+const TASK_ACTION_VERBS = /\b(remind|call|buy|pay|submit|book|meet|schedule|send|finish|do|take|order|get|go|clean|message|attend|prepare|review|transfer|recharge|renew|email|write|pick|drop)\b/i;
+const TIME_OR_DATE_PATTERNS = /\b(today|tomorrow|tonight|morning|afternoon|evening|noon|midnight|pm|am|at\s+\d|on\s+\w+|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|\d{1,2}\/\d{1,2})\b/i;
+
+export function splitMultiTaskInput(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+
+  // 1. Explicit newlines / bullet points
+  if (trimmed.includes('\n')) {
+    const lines = trimmed
+      .split('\n')
+      .map((l) => l.replace(/^\s*(?:[-*•]|\d+[\.\)])\s*/, '').trim())
+      .filter((l) => l.length > 0);
+    if (lines.length > 1) return lines;
+  }
+
+  // 2. Numbered lists on single line (e.g., "1. Buy milk at 5pm 2. Call dad at 6pm")
+  const numberedParts = trimmed.split(/(?:^|\s+)\d+[\.\)]\s+/).filter((s) => s.trim().length > 0);
+  if (numberedParts.length > 1) {
+    return numberedParts.map((s) => s.trim());
+  }
+
+  // 3. Semicolons
+  if (trimmed.includes(';')) {
+    const parts = trimmed.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+    if (parts.length > 1) return parts;
+  }
+
+  // 4. Compound phrases: " and then ", " and also ", " also ", " then "
+  const compoundRegex = /\s+(?:and\s+then|and\s+also|also|then)\s+/i;
+  if (compoundRegex.test(trimmed)) {
+    const parts = trimmed.split(compoundRegex).map((s) => s.trim()).filter((s) => s.length > 0);
+    if (parts.length > 1) return parts;
+  }
+
+  // 5. Sentence boundary ". " where next sentence has an action verb
+  const sentences = trimmed.split(/\.\s+(?=[A-Za-z])/).map((s) => s.trim()).filter((s) => s.length > 0);
+  if (sentences.length > 1) {
+    const allLookLikeTasks = sentences.every((s) => TASK_ACTION_VERBS.test(s) || TIME_OR_DATE_PATTERNS.test(s));
+    if (allLookLikeTasks) return sentences;
+  }
+
+  // 6. Conjunction " and " between full task clauses
+  // Avoid splitting compound items (e.g. "Buy milk and eggs") by requiring subsequent parts to start with or contain an action verb
+  if (/\s+and\s+/i.test(trimmed)) {
+    const andParts = trimmed.split(/\s+and\s+/i).map((s) => s.trim()).filter((s) => s.length > 0);
+    if (andParts.length > 1) {
+      const isMulti = andParts.every((part, idx) => {
+        if (idx === 0) return TASK_ACTION_VERBS.test(part) || TIME_OR_DATE_PATTERNS.test(part);
+        return TASK_ACTION_VERBS.test(part);
+      });
+      if (isMulti) {
+        return andParts;
+      }
+    }
+  }
+
+  return [trimmed];
+}
+
+export function parseMultipleTasksDeterministic(
+  input: string,
+  baseDate: Date = new Date(),
+  userTimezone: string = 'Asia/Kolkata'
+): ParsedTaskResult[] {
+  const parts = splitMultiTaskInput(input);
+  if (parts.length <= 1) {
+    return [parseTaskDeterministic(input, baseDate, userTimezone)];
+  }
+
+  return parts.map((part) => parseTaskDeterministic(part, baseDate, userTimezone));
+}
+
