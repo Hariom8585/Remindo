@@ -50,3 +50,6 @@ Thumbs.db
 
 # Vercel deployment cache
 .vercel
+
+.vercel
+.env*
