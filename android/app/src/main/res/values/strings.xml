@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Remindo</string>
+    <string name="title_activity_main">Remindo</string>
+    <string name="package_name">com.remindo.app</string>
+    <string name="custom_url_scheme">com.remindo.app</string>
+</resources>

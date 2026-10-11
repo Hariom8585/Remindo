@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String            @id @default(uuid())
+  name          String
+  email         String            @unique
+  passwordHash  String            @map("password_hash")
+  timezone      String            @default("Asia/Kolkata")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  tasks         Task[]
+  reminders     Reminder[]
+  notificationLogs NotificationLog[]
+  preferences   UserPreference?
+
+  @@map("users")
+}
+
+model UserPreference {
+  id                    String   @id @default(uuid())
+  userId                String   @unique @map("user_id")
+  defaultAdvanceMinutes Int      @default(15) @map("default_advance_minutes")
+  defaultAlertMode      String   @default("ALARM") @map("default_alert_mode") // ALARM or NOTIFICATION
+  defaultSnoozeMinutes  Int      @default(15) @map("default_snooze_minutes")
+  timezone              String   @default("Asia/Kolkata")
+  soundEnabled          Boolean  @default(true) @map("sound_enabled")
+  theme                 String   @default("dark")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  userId      String     @map("user_id")
+  title       String
+  description String?    @db.Text
+  category    String     @default("Other")
+  priority    String     @default("MEDIUM")
+  dueDate     DateTime?  @map("due_date")
+  dueTime     String?    @map("due_time")
+  alertMode   String     @default("ALARM") @map("alert_mode") // ALARM or NOTIFICATION
+  isCompleted Boolean    @default(false) @map("is_completed")
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminders   Reminder[]
+
+  @@index([userId, isCompleted])
+  @@index([dueDate])
+  @@map("tasks")
+}
+
+model Reminder {
+  id             String    @id @default(uuid())
+  taskId         String    @map("task_id")
+  userId         String    @map("user_id")
+  remindAt       DateTime  @map("remind_at")
+  channel        String    @default("BROWSER")
+  alertMode      String    @default("ALARM") @map("alert_mode") // ALARM or NOTIFICATION
+  status         String    @default("PENDING") // PENDING, SENT, SNOOZED, DISMISSED
+  advanceMinutes Int       @default(0) @map("advance_minutes")
+  sentAt         DateTime? @map("sent_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  task             Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationLogs NotificationLog[]
+
+  @@index([userId, status])
+  @@index([remindAt, status])
+  @@map("reminders")
+}
+
+model NotificationLog {
+  id           String    @id @default(uuid())
+  reminderId   String?   @map("reminder_id")
+  userId       String    @map("user_id")
+  channel      String
+  status       String    // SUCCESS, FAILED
+  errorMessage String?   @map("error_message") @db.Text
+  deliveredAt  DateTime  @default(now()) @map("delivered_at")
+
+  reminder Reminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deliveredAt])
+  @@map("notification_logs")
+}
