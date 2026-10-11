@@ -101,18 +101,19 @@ node scripts/test-live-alert-modes.mjs
 
 ## 🌐 Vercel Deployment Guide
 
-1. Push your repository to GitHub.
-2. Go to [Vercel](https://vercel.com) and click **"Add New Project"**.
-3. Import your **Remindo** GitHub repository.
-4. Set the Framework Preset to **Next.js**.
-5. Configure Environment Variables in Vercel:
+- **GitHub Repository:** [https://github.com/Hariom8585/Remindo](https://github.com/Hariom8585/Remindo)
+
+1. Go to [Vercel](https://vercel.com) and click **"Add New Project"**.
+2. Select and import the **Hariom8585/Remindo** GitHub repository.
+3. Keep Framework Preset as **Next.js** (Root Directory: `./`).
+4. Configure Environment Variables in Vercel Project Settings:
    - `DATABASE_URL`: Hosted MySQL connection string (e.g. TiDB Cloud Serverless, PlanetScale, Aiven, or Railway MySQL).
-   - `JWT_SECRET`: Random 32+ character secret string.
-   - `NEXT_PUBLIC_APP_URL`: Your Vercel production URL (e.g. `https://remindo.vercel.app`).
-   - `CRON_SECRET`: Secret token matching `vercel.json` cron authorization.
-   - `GEMINI_API_KEY` or `OPENAI_API_KEY`: *(Optional)* For AI chat assistance.
-6. Click **Deploy**.
-7. Run database migration on your hosted database:
+   - `JWT_SECRET`: Random 32+ character secure secret key.
+   - `NEXT_PUBLIC_APP_URL`: Your Vercel production HTTPS URL (e.g. `https://remindo.vercel.app`).
+   - `CRON_SECRET`: Secret token for securing `/api/cron/reminders`.
+   - `GEMINI_API_KEY` or `OPENAI_API_KEY`: *(Optional)* Pluggable AI keys for advanced conversational extraction.
+5. Click **Deploy**.
+6. Push database schema to your hosted MySQL database:
    ```bash
    npx prisma db push
    ```
@@ -121,9 +122,9 @@ node scripts/test-live-alert-modes.mjs
 
 ## 📱 Android App (Capacitor)
 
-The Android native project is located in `./android`.
+The Android native project is located in `./android` with `applicationId`: `com.remindo.app`.
 
-### Build Debug APK:
+### 1. Build Debug APK (For Testing on Physical Phone):
 ```bash
 # Sync web build to Android assets
 npm run build
@@ -133,13 +134,26 @@ npx cap sync android
 cd android
 ./gradlew assembleDebug
 ```
-The compiled APK will be generated at:
+Compiled APK path:
 `android/app/build/outputs/apk/debug/app-debug.apk`
 
-### Build Production Release AAB (for Google Play Console):
+### 2. Build Production Release AAB (For Google Play Store):
 ```bash
 cd android
 ./gradlew bundleRelease
 ```
-The App Bundle will be generated at:
+Compiled App Bundle path:
 `android/app/build/outputs/bundle/release/app-release.aab`
+
+### 3. Google Play Store Release Checklist:
+- **Application ID:** `com.remindo.app`
+- **Target SDK:** 34 (Android 14)
+- **Minimum SDK:** 22 (Android 5.1)
+- **Permissions:** `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `WAKE_LOCK`, `RECORD_AUDIO`
+- **Play Console Steps:**
+  1. Create developer account on [Google Play Console](https://play.google.com/console) ($25 one-time fee).
+  2. Create new app titled "REMINDO — Remember Less. Get More Done."
+  3. Upload `app-release.aab` to Internal Testing or Closed Testing track.
+  4. Complete Data Safety Form & Privacy Policy URL.
+  5. Sign release build with production keystore.
+
